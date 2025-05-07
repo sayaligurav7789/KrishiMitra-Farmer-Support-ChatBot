@@ -1,43 +1,73 @@
-
 @import url('https://fonts.googleapis.com/css2?family=Anton&family=Poppins&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
+  font-family: 'Poppins', sans-serif;
   background-color: #101124;
+  background-image: 
+    linear-gradient(rgba(78, 81, 140, 0.85), rgba(80, 133, 149, 0.85)), 
+    url('Farmer-Support-ChatBot/Code/frontend/src/assets/bg.jpeg'); /* Make sure this path is correct */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
+
+/* Background Ball Effects */
 #back-ball {
+  position: absolute;
   left: -8rem;
   top: -4rem;
   height: 700px;
   width: 700px;
-  filter: blur(60px);
+ 
+  background: radial-gradient(circle, #00ff99, transparent);
+  opacity: 0.15;
+  z-index: 0;
 }
 
 #back-ball-2 {
+  position: absolute;
   right: 0;
   bottom: 0;
   height: 600px;
   width: 600px;
-  filter: blur(60px);
+  filter: blur(5px);
+  background: radial-gradient(circle, #00bfff, transparent);
+  opacity: 0.15;
+  z-index: 0;
 }
 
+/* Glassy Backdrop */
 #backdrop {
-  backdrop-filter: blur(100px);
-  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(5px);
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 20px;
+  padding: 20px;
+  z-index: 1;
 }
 
+/* Chat Section */
 #chatscreen {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  overflow-y: auto;
+  height: calc(100vh - 100px); /* Adjust height based on your layout */
+  padding: 20px;
+  z-index: 2;
+  position: relative;
 }
 
 #chatContainer {
-  max-width: 80%; 
+  max-width: 80%;
   word-wrap: break-word;
   margin-bottom: 10px;
   border-radius: 10px;
@@ -46,14 +76,17 @@ body {
 
 #chatContainer.self {
   align-self: flex-end;
-  background-color: #475569; 
+  background-color: rgba(59, 130, 246, 0.5); /* semi-transparent user bubble */
+  color: #ffffff;
 }
 
 #chatContainer:not(.self) {
   align-self: flex-start;
-  background-color: #475569; 
+  background-color: rgba(71, 85, 105, 0.4); /* semi-transparent bot bubble */
+  color: #ffffff;
 }
 
+/* Scrollbar Styling */
 #chatscreen::-webkit-scrollbar {
   width: 5px;
 }
@@ -63,12 +96,16 @@ body {
   border-radius: 10px;
 }
 
+/* Input Container */
 #input-container {
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
-  padding: 10px; 
-  background-color: #101124;
-  z-index: 10; 
+  padding: 10px;
+  background-color: rgba(16, 17, 36, 0.9); /* slightly transparent */
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
