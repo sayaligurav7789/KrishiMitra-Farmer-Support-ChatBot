@@ -18,6 +18,7 @@ const App = () => {
   const [chatMessage, setChatMessage] = useState([]);
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [isListening, setIsListening] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const bottomRef = useRef(null);
   const [speechRecognition, setSpeechRecognition] = useState(null);
 
@@ -46,6 +47,7 @@ const App = () => {
       language: selectedLanguage
     });
     setText('');
+    setIsLoading(true);
   };
 
   // Setting up event listeners for receiving messages from the server
@@ -56,6 +58,7 @@ const App = () => {
         self: false
       };
       setChatMessage((prev) => [...prev, temp]);
+      setIsLoading(false);
     });
 
     // Cleanup function to remove the event listener when the component unmounts
@@ -94,6 +97,7 @@ const App = () => {
         language: selectedLanguage
       });
       setIsListening(false); 
+      setIsLoading(true);
     };
 
     // Handling the end event
@@ -178,6 +182,11 @@ const App = () => {
           {chatMessage.map((item, key) => (
             <div key={key} id='chatContainer' dangerouslySetInnerHTML={{ __html: item.message }} className={`max-w-3/4 py-1 px-3 font-poppins text-lg rounded-3xl ${item.self ? 'bg-emerald-700' : 'bg-slate-600'} text-white ${item.self ? 'ml-auto' : 'mr-auto'} my-2`}></div>
           ))}
+          {isLoading && (
+            <div className="max-w-3/4 py-1 px-3 font-poppins text-lg rounded-3xl bg-slate-600 text-white mr-auto my-2 italic text-sm text-slate-300">
+              Typing...
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
 

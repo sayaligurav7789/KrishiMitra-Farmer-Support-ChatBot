@@ -1,127 +1,104 @@
-# Importing required libraries and models
+import warnings
+warnings.filterwarnings("ignore")
+
+import eventlet
+eventlet.monkey_patch()
+
+import os
+import logging
 import nltk
 import pickle
 import numpy as np
 import json
 import random
-import logging
 from nltk.stem import WordNetLemmatizer
-from tensorflow.keras.models import load_model
-from googletrans import Translator
-from flask import Flask
+from flask import Flask, jsonify
 from flask_socketio import SocketIO, emit
-import os
+from googletrans import Translator
 
-# Setup
-nltk.download('punkt')
-nltk.download('wordnet')
+# Suppress noise
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+nltk.download('punkt', quiet=True)
+nltk.download('punkt_tab', quiet=True)
+nltk.download('wordnet', quiet=True)
+nltk.download('omw-1.4', quiet=True)
+
+# Initialize
+logging.basicConfig(level=logging.INFO, format='%(message)s')
 lemma = WordNetLemmatizer()
 
-# File existence check function
-def load_file(filepath):
-    if not os.path.exists(filepath):
-        logging.error(f"File not found: {filepath}")
-        raise FileNotFoundError(f"{filepath} not found.")
-    return filepath
-
 # Load model and data
-model = load_model(load_file('model.h5'))
-intents = json.loads(open(load_file('intents.json')).read())
-words = pickle.load(open(load_file('word.pkl'), 'rb'))
-classes = pickle.load(open(load_file('class.pkl'), 'rb'))
+try:
+    with open('model.pkl', 'rb') as f:
+        model = pickle.load(f)
+    with open('intents.json', 'r', encoding='utf-8') as f:
+        intents = json.load(f)
+    with open('word.pkl', 'rb') as f:
+        words = pickle.load(f)
+    with open('class.pkl', 'rb') as f:
+        classes = pickle.load(f)
+    logging.info(">>> Backend initialized successfully")
+except Exception as e:
+    logging.error(f">>> Failed to load model: {e}")
+    model = None
 
-# Logging config
-logging.basicConfig(level=logging.INFO)
-
-# Preprocessing functions
+# Chatbot Logic
 def clean_up_sentence(sentence):
     sentence_words = nltk.word_tokenize(sentence)
-    sentence_words = [lemma.lemmatize(word.lower()) for word in sentence_words]
-    return sentence_words
+    return [lemma.lemmatize(word.lower()) for word in sentence_words]
 
-def bow(sentence, words, show_details=True):
+def bow(sentence, words):
     sentence_words = clean_up_sentence(sentence)
-    cltn = np.zeros(len(words), dtype=np.float32)
-    for word in sentence_words:
-        for i, w in enumerate(words):
-            if w == word:
-                cltn[i] = 1
-                if show_details:
-                    logging.info(f"Found '{w}' in bag")
-    return cltn
+    bag = [0]*len(words)
+    for s in sentence_words:
+        for i,w in enumerate(words):
+            if w == s: bag[i] = 1
+    return np.array(bag)
 
 def predict_class(sentence, model):
-    try:
-        l = bow(sentence, words, show_details=False)
-        res = model.predict(np.array([l]))[0]
-    except Exception as e:
-        logging.error(f"Error predicting class: {e}")
-        return []  # Return empty list if prediction fails
-
-    ERROR_THRESHOLD = 0.25
-    results = [(i, j) for i, j in enumerate(res) if j > ERROR_THRESHOLD]
+    if model is None: return []
+    p = bow(sentence, words)
+    res = model.predict_proba(np.array([p]))[0]
+    results = [[i,r] for i,r in enumerate(res) if r > 0.25]
     results.sort(key=lambda x: x[1], reverse=True)
+    return [{"intent": classes[r[0]], "probability": str(r[1])} for r in results]
 
-    return_list = [{"intent": classes[k[0]], "probability": str(k[1])} for k in results]
-    return return_list
-
-def getResponse(ints, intents_json):
-    if not ints:
-        return "I'm not sure how to respond to that. Could you try asking something else?"
+def get_response(ints, intents_json):
+    if not ints: return "I'm not sure how to respond to that."
     tag = ints[0]['intent']
     for i in intents_json['intents']:
         if i['tag'] == tag:
             return random.choice(i['responses'])
+    return "I'm sorry, I don't understand."
 
-# Translation support
-def translate_message(message, source_language, target_language='en'):
-    try:
-        translator = Translator()
-        translated_message = translator.translate(message, src=source_language, dest=target_language).text
-        return translated_message
-    except Exception as e:
-        logging.error(f"Translation error: {e} | Source: {source_language} | Target: {target_language} | Message: {message}")
-        return "Sorry, I couldn't translate your message."
-
-# Main chatbot response function
-def chatbotResponse(msg, source_language):
-    translated_msg = translate_message(msg, source_language)
-    ints = predict_class(translated_msg, model)
-    res = getResponse(ints, intents)
-    translated_response = translate_message(res, 'en', source_language)
-    return translated_response
-
-# Flask App and SocketIO setup
+# Server Setup
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret!'
-app.static_folder = 'static'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Basic test route to ensure the server is running
 @app.route('/')
 def home():
-    return "Chatbot server is running!"
+    return "Chatbot server is running."
 
-# SocketIO communication
 @socketio.on('message')
 def handle_message(data):
+    lang = data.get('language', 'en')
+    msg = data.get('message', '').strip()
+    if not msg: return
+
+    # Translation and Processing
+    translator = Translator()
     try:
-        source_language = data.get('language', 'en')
-        user_message = data.get('message', '')
-        if not user_message:
-            emit('recv_message', "Please enter a message to get a response.")
-            return
-
-        response = chatbotResponse(user_message, source_language)
-        logging.info(f"User: {user_message} | Bot: {response}")
-        emit('recv_message', response)
+        eng_msg = translator.translate(msg, src=lang, dest='en').text if lang != 'en' else msg
+        ints = predict_class(eng_msg, model)
+        res = get_response(ints, intents)
+        final_res = translator.translate(res, src='en', dest=lang).text if lang != 'en' else res
+        
+        logging.info(f"User ({lang}): {msg}")
+        emit('recv_message', final_res)
     except Exception as e:
-        logging.error(f"Error handling message: {e}")
-        emit('recv_message', "Something went wrong. Please try again.")
+        logging.error(f"Error: {e}")
+        emit('recv_message', "I'm having trouble translating that. Please try again.")
 
-# App entry point
 if __name__ == "__main__":
-    #  Render deployment compatibility update
-    import eventlet
-    eventlet.monkey_patch()
-    socketio.run(app, host="0.0.0.0", port=5000)
+    logging.info(">>> Starting server on port 5000...")
+    socketio.run(app, host="0.0.0.0", port=5000, debug=False)
