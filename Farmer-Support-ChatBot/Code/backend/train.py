@@ -1,26 +1,33 @@
-""" This file is used to train the model and save it as model.h5 file. """
+""" This file is used to train the model and save it as model.pkl file. """
 
 # Importing the required libraries
 import nltk
 import json
 import pickle
 import numpy as np
-from keras.models import Sequential
-from keras.layers import Dense, Dropout
-from keras.optimizers import SGD
+from sklearn.neural_network import MLPClassifier
 import random
 from nltk.stem import WordNetLemmatizer
-nltk.download('punkt')
-nltk.download('wordnet')
-nltk.download('omw-1.4')
+
+# Ensure NLTK data is downloaded
+try:
+    nltk.data.find('tokenizers/punkt')
+    nltk.data.find('tokenizers/punkt_tab')
+    nltk.data.find('corpora/wordnet')
+except LookupError:
+    nltk.download('punkt')
+    nltk.download('punkt_tab')
+    nltk.download('wordnet')
+    nltk.download('omw-1.4')
+
 lemma = WordNetLemmatizer()
 
 # Preprocessing the data
-words=[]
+words = []
 classes = []
 docs = []
-ignore_words = ['?', '!','',"'"]
-data_file = open('intents.json').read()
+ignore_words = ['?', '!', '', "'"]
+data_file = open('intents.json', encoding='utf-8').read()
 intents = json.loads(data_file)
 
 # Tokenizing the words
@@ -41,13 +48,15 @@ words = sorted(list(set(words)))
 classes = sorted(list(set(classes)))
 
 # Printing the length of the documents, classes and words
-print (len(docs), "documents")
-print (len(classes), "classes", classes)
-print (len(words), "unique lemmatized words", words)
+print(len(docs), "documents")
+print(len(classes), "classes", classes)
+print(len(words), "unique lemmatized words")
 
 # Saving the words and classes in pickle files
-pickle.dump(words,open('word.pkl','wb'))
-pickle.dump(classes,open('class.pkl','wb'))
+with open('word.pkl', 'wb') as f:
+    pickle.dump(words, f)
+with open('class.pkl', 'wb') as f:
+    pickle.dump(classes, f)
 
 # Creating the training data
 training = []
@@ -62,6 +71,9 @@ for d in docs:
     for w in words:
         bag.append(1) if w in pattern_words else bag.append(0)
 
+    # Scikit-learn supports 1D label targets directly, but since we want probabilities,
+    # and the original logic used one-hot encoding, we'll keep the one-hot structure
+    # which MLPClassifier also natively supports.
     output_row = list(output_empty)
     output_row[classes.index(d[1])] = 1
     
@@ -69,31 +81,34 @@ for d in docs:
 
 # Shuffling the training data
 random.shuffle(training)
-training = np.array(training,dtype=object)
 
-x_train = list(training[:,0])
-y_train = list(training[:,1])
-print("created Training data Succesfully")
+x_train = [row[0] for row in training]
+y_train = [row[1] for row in training]
+print("Created Training data Successfully")
 
-# Creating the model : Sequential model
-model = Sequential()
-model.add(Dense(150, input_shape=(len(x_train[0]),), activation='relu'))
-model.add(Dropout(0.1))
-model.add(Dense(150, activation='relu'))
-model.add(Dropout(0.1))
-model.add(Dense(len(y_train[0]), activation='softmax'))
-
-# Compiling the model
-sgd = SGD(learning_rate=0.01, momentum=0.9, nesterov=True)
-model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
+# Creating the model : Scikit-learn MLP Classifier (same architecture as before)
+model = MLPClassifier(
+    hidden_layer_sizes=(150, 150),
+    activation='relu',
+    solver='sgd',
+    learning_rate_init=0.01,
+    momentum=0.9,
+    nesterovs_momentum=True,
+    max_iter=250,
+    batch_size=5,
+    verbose=True
+)
 
 # Fitting the model
-file = model.fit(np.array(x_train), np.array(y_train), epochs=250, batch_size=5, verbose=1)
-model.save('model.h5', file)
+print("Training the model...")
+model.fit(np.array(x_train), np.array(y_train))
 
-print("Successful model creation")
+# Save the trained scikit-learn model
+with open('model.pkl', 'wb') as f:
+    pickle.dump(model, f)
+
+print("Successful model creation and saved as model.pkl")
 
 # Evaluating the model
-loss, accuracy = model.evaluate(np.array(x_train), np.array(y_train))
-print('Accuracy:', accuracy)
-print('Loss:',loss)
+accuracy = model.score(np.array(x_train), np.array(y_train))
+print(f'Training Accuracy: {accuracy * 100:.2f}%')
